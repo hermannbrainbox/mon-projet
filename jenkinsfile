@@ -1,0 +1,83 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_IMAGE = 'my-app-image'
+        DOCKER_TAG = 'latest'
+        K8S_NAMESPACE = 'default'  // Namespace de Kubernetes
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                // Récupère le code depuis le dépôt Git
+                git 'https://github.com/ton-utilisateur/ton-repository.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    echo 'Building Docker image...'
+                    // Construire l'image Docker
+                    sh 'docker build -t $DOCKER_IMAGE:$DOCKER_TAG .'
+                }
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    echo 'Pushing Docker image to Docker Hub...'
+                    // Pousser l'image sur Docker Hub (ou un autre registre)
+                    sh 'docker push $DOCKER_IMAGE:$DOCKER_TAG'
+                }
+            }
+        }
+
+        stage('Deploy to Minikube') {
+            steps {
+                script {
+                    echo 'Deploying application to Minikube...'
+                    // Créer un fichier de déploiement Kubernetes dans Minikube
+                    sh '''
+                        kubectl apply -f k8s/deployment.yaml
+                        kubectl apply -f k8s/service.yaml
+                    '''
+                }
+            }
+        }
+
+        stage('Test Application in Minikube') {
+            steps {
+                script {
+                    echo 'Running tests in Minikube...'
+                    // Tester l'application déployée dans Minikube
+                    sh '''
+                        kubectl run test-pod --image=$DOCKER_IMAGE:$DOCKER_TAG --namespace=$K8S_NAMESPACE --rm -i --tty -- /bin/bash -c "curl http://my-app-service:8080"
+                    '''
+                }
+            }
+        }
+
+        stage('Clean up') {
+            steps {
+                script {
+                    echo 'Cleaning up Kubernetes resources...'
+                    // Supprimer les ressources Kubernetes après le test
+                    sh 'kubectl delete -f k8s/deployment.yaml'
+                    sh 'kubectl delete -f k8s/service.yaml'
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline succeeded!'
+        }
+        failure {
+            echo 'Pipeline failed.'
+        }
+    }
+}
